@@ -1,5 +1,7 @@
 # Ivoox Podcast a MP3
 Descarga en mp3 de manera masiva los programas de tu podcast favorito en Ivoox.
+### ATENCIÓN:
+Las URL de descarga que proporcionan a los podcast categorizados como "Ivoox Originals" son solo un pequeño fragmento. Para este tipo de podcasts, la única utilidad del programa podría ser la creación de la hoja de cálculo con todos los episodios para facilitar búsquedas. 
 ## Ejecución e instalación
 - Descarga el archivo correspondiente a tu sistema operativo desde el espacio "Releases" del repositorio.
 - Dependiendo del sistema operativo tal vez necesites conceder permisos de ejecución al binario.
