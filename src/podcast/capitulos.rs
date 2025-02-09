@@ -4,29 +4,23 @@ use scraper::{ElementRef, Html, Selector};
 use super::modelos::{Info, Podcast, Programa};
 
 fn extraer_titulo(capitulo: &ElementRef<'_>) -> Option<String> {
-    let selector_enlace = Selector::parse(".header-modulo > a:nth-of-type(1)").unwrap();
+    let selector_enlace = Selector::parse("a").unwrap();
     let mut busqueda_enlaces = capitulo.select(&selector_enlace);
     if busqueda_enlaces.clone().count() == 0 {
         return None;
     };
-    let enlace_titulo = busqueda_enlaces.nth(0).unwrap();
-    match enlace_titulo.attr("title") {
-        None => return None,
-        Some(ok) => return Some(ok.to_string()),
-    }
+    let titulo: String = busqueda_enlaces.next().unwrap().text().collect();
+    Some(titulo.as_str().trim().to_string())
 }
 
 fn extraer_url(capitulo: &ElementRef<'_>) -> Option<String> {
-    let selector_enlace = Selector::parse(".header-modulo > a:nth-of-type(1)").unwrap();
+    let selector_enlace = Selector::parse("a").unwrap();
     let mut busqueda_enlaces = capitulo.select(&selector_enlace);
     if busqueda_enlaces.clone().count() == 0 {
         return None;
     };
-    let enlace_titulo = busqueda_enlaces.nth(0).unwrap();
-    match enlace_titulo.attr("href") {
-        None => return None,
-        Some(ok) => return Some(ok.to_string()),
-    }
+    let enlace_titulo = busqueda_enlaces.next().unwrap();
+    enlace_titulo.attr("href").map(|ok| format!("https://www.ivoox.com{}", ok))
 }
 
 fn extraer_descarga(url: &Option<String>) -> Option<String> {
@@ -44,17 +38,13 @@ fn extraer_descarga(url: &Option<String>) -> Option<String> {
 }
 
 fn extraer_descripcion(capitulo: &ElementRef<'_>) -> Option<String> {
-    let selector_descripcion =
-        Selector::parse(".audio-description > button:nth-of-type(1)").unwrap();
+    let selector_descripcion = Selector::parse("div.description").unwrap();
     let mut busqueda_descripcion = capitulo.select(&selector_descripcion);
     if busqueda_descripcion.clone().count() == 0 {
         return None;
     };
-    let descripcion = busqueda_descripcion.nth(0).unwrap();
-    match descripcion.attr("data-content") {
-        None => return None,
-        Some(ok) => return Some(ok.replace("<br>", "\n").to_string()),
-    }
+    let descripcion: String = busqueda_descripcion.next().unwrap().text().collect();
+    Some(descripcion.as_str().trim().to_string())
 }
 
 fn extraer_informacion_capitulo(capitulo: ElementRef<'_>) -> Programa {
@@ -73,19 +63,21 @@ fn extraer_informacion_capitulo(capitulo: ElementRef<'_>) -> Programa {
 fn verificar_url_programa(url: &str) -> Result<(), String> {
     // https://www.ivoox.com/podcast-rock-entre-amigos_sq_f1579217_1.html
     if !url.contains("_sq_") {
-        let mensaje = format!("la url no parece válida, no se ha encontrado _sq_");
-        return Err(mensaje);
+        return Err(String::from(
+            "la url no parece válida, no se ha encontrado _sq_",
+        ));
     }
     if !url.ends_with("_1.html") {
-        let mensaje = format!("la url no parece válida, no termina en 1.html");
-        return Err(mensaje);
+        return Err(String::from(
+            "la url no parece válida, no termina en 1.html",
+        ));
     }
 
     Ok(())
 }
 
 fn nombre_descripcion_img_podcast(html: &Html) -> Info {
-    let selector_imagen_podcast = Selector::parse(".imagen-ficha > img:nth-of-type(1)").unwrap();
+    let selector_imagen_podcast = Selector::parse(".image-wrapper img").unwrap();
     let mut info = Info {
         nombre: None,
         descripcion: None,
@@ -93,27 +85,33 @@ fn nombre_descripcion_img_podcast(html: &Html) -> Info {
     };
     let mut busqueda_imagen_podcast = html.select(&selector_imagen_podcast);
     if busqueda_imagen_podcast.clone().count() > 0 {
-        let imagen_podcast = busqueda_imagen_podcast.nth(0).unwrap();
+        let imagen_podcast = busqueda_imagen_podcast.next().unwrap();
         match imagen_podcast.attr("alt") {
             None => (),
             Some(ok) => info.nombre = Some(ok.to_owned()),
         }
-        match imagen_podcast.attr("data-src") {
+        match imagen_podcast.attr("data-lazy-src") {
             None => (),
-            Some(ok) => info.imagen = Some(ok.to_owned()),
+            Some(ok) => {
+                // https://img-static.ivoox.com/index.php?w=175&amp;h=175&amp;url=https://static-1.ivoox.com/canales/0/4/f/f/04ffe1ed47eb8969977fcc13ef525e49_XXL.jpg
+                let partes = ok.split("https://").collect::<Vec<&str>>();
+                if partes.len() == 3 {
+                    info.imagen = Some(format!("https://{}", partes[2]))
+                }
+            }
         }
     }
 
-    let selector_descripcion = Selector::parse(r#"meta[name="twitter:description"]"#).unwrap();
+    let selector_descripcion = Selector::parse(r#"meta[property="og:description"]"#).unwrap();
     let mut busqueda_descripcion = html.select(&selector_descripcion);
     if busqueda_descripcion.clone().count() > 0 {
-        let descripcion = busqueda_descripcion.nth(0).unwrap();
+        let descripcion = busqueda_descripcion.next().unwrap();
         match descripcion.attr("content") {
             None => (),
             Some(ok) => info.descripcion = Some(ok.to_owned()),
         }
     }
-    return info;
+    info
 }
 
 pub async fn buscar_capitulos_paginados(url: &str, cliente: &Client) -> Result<String, String> {
@@ -131,12 +129,9 @@ pub async fn buscar_capitulos_paginados(url: &str, cliente: &Client) -> Result<S
         programas: Vec::new(),
     };
 
-    match verificar_url_programa(url) {
-        Err(error) => {
-            podcast.errores.push(error);
-        }
-        Ok(_) => (),
-    }
+    if let Err(error) = verificar_url_programa(url) {
+        podcast.errores.push(error);
+    };
 
     if podcast.errores.is_empty() {
         let mut errores_seguidos = 0;
@@ -192,7 +187,8 @@ pub async fn buscar_capitulos_paginados(url: &str, cliente: &Client) -> Result<S
                 podcast.info = nombre_descripcion_img_podcast(&html);
             }
 
-            let selector_capitulos = Selector::parse("div.modulo-type-episodio").unwrap();
+            let selector_capitulos =
+                Selector::parse("div.pl-1.pl-sm-2.flex-grow-1.align-items-stretch").unwrap();
             let selectores_capitulos = html.select(&selector_capitulos);
             if selectores_capitulos.clone().count() == 0 {
                 break;
@@ -212,7 +208,7 @@ pub async fn buscar_capitulos_paginados(url: &str, cliente: &Client) -> Result<S
                 error_formateado_json
             );
 
-            return Err(mensaje_error);
+            Err(mensaje_error)
         }
         Ok(ok) => Ok(ok),
     }

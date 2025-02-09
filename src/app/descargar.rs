@@ -1,4 +1,10 @@
-use std::{env, fs::File, io::Write, path::PathBuf, sync::Arc};
+use std::{
+    env,
+    fs::File,
+    io::Write,
+    path::Path,
+    sync::Arc,
+};
 
 use super::router::App;
 use axum::{
@@ -39,13 +45,10 @@ pub async fn gestionar_descarga(ws: WebSocketUpgrade, State(estado): State<App>)
 
 fn determinar_descargas_simultaneas() -> usize {
     let variable_descargas = match env::var("IVOOX_PODCAST_DESCARGAS") {
-        Err(_) => return 1 as usize,
+        Err(_) => return 1,
         Ok(ok) => ok,
     };
-    match variable_descargas.parse::<usize>() {
-        Err(_) => return 1 as usize,
-        Ok(ok) => return ok,
-    }
+    variable_descargas.parse::<usize>().unwrap_or(1)
 }
 
 async fn enviar_progreso(
@@ -60,16 +63,13 @@ async fn enviar_progreso(
         }
     };
 
-    match sender
+    if let Err(error) = sender
         .lock()
         .await
         .send(Message::Text(mensaje_ws_serializado))
         .await
     {
-        Err(error) => {
-            eprintln!("error enviando mensaje_ws_serializado: {}", error);
-        }
-        Ok(_) => (),
+        eprintln!("error enviando mensaje_ws_serializado: {}", error);
     }
 }
 
@@ -88,7 +88,7 @@ pub async fn descargar_archivo_progreso(
     cliente: &Client,
     sender: Arc<Mutex<SplitSink<WebSocket, Message>>>,
     descarga: &SolicitudDescarga,
-    ruta_raiz: &PathBuf,
+    ruta_raiz: &Path,
 ) {
     let ruta_descarga = ruta_raiz.join(&descarga.archivo).display().to_string();
     let mut estado_descarga = SolicitudDescarga {
@@ -121,7 +121,7 @@ pub async fn descargar_archivo_progreso(
         return;
     }
 
-    let mut tamaño = 0 as u64;
+    let mut tamaño = 0;
     if res.content_length().is_some() {
         tamaño = res.content_length().unwrap();
     }
